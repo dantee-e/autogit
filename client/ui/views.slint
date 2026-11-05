@@ -1,0 +1,430 @@
+import { Button, LineEdit, ComboBox, CheckBox, StandardTableView, StandardListView, TabWidget, Palette,
+         ScrollView, ListView } from "std-widgets.slint";
+import { AppState, Actions, Labels, Theme, ActivityRow, UserRow } from "globals.slint";
+import { Badge, Card, Title, Subtitle, Muted, FieldLabel, StatusColor } from "common.slint";
+
+// ------------------------------------------------------------------ login
+
+export component LoginView inherits Rectangle {
+    background: Palette.background;
+    Rectangle {
+        width: min(420px, root.width - 32px);
+        height: form.preferred-height;
+        form := VerticalLayout {
+            spacing: 10px;
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+                Rectangle { width: 28px; height: 28px; border-radius: 6px; background: Theme.brand;
+                    Text { text: "P"; color: white; font-weight: 800; font-size: 16px; } }
+                Title { text: "Paddock"; vertical-alignment: center; }
+            }
+            Muted { text: @tr("Gestão de versões de CAD e software da equipe."); }
+            Rectangle { height: 8px; }
+            FieldLabel { text: @tr("Servidor"); }
+            url := LineEdit { text: AppState.server-url; placeholder-text: "http://servidor:8000"; }
+            FieldLabel { text: @tr("Usuário"); }
+            user := LineEdit { text: AppState.username; }
+            FieldLabel { text: @tr("Senha"); }
+            pass := LineEdit {
+                input-type: InputType.password;
+                accepted => { Actions.login(url.text, user.text, pass.text); }
+            }
+            if AppState.error-text != "": Text {
+                text: AppState.error-text; color: Theme.danger; wrap: word-wrap;
+            }
+            Button {
+                text: AppState.busy ? @tr("Conectando…") : @tr("Entrar");
+                primary: true;
+                enabled: !AppState.busy;
+                clicked => { Actions.login(url.text, user.text, pass.text); }
+            }
+            Muted { text: @tr("Primeiro acesso? Abra o endereço do servidor no navegador para criar o administrador."); }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ sidebar
+
+component NavButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    in property <int> count;
+    callback clicked;
+    height: 32px;
+    border-radius: Theme.radius;
+    background: root.active ? Palette.accent-background.with-alpha(0.15) : (ta.has-hover ? Palette.foreground.with-alpha(0.06) : transparent);
+    ta := TouchArea { clicked => { root.clicked(); } }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        Text { text: root.text; vertical-alignment: center; font-weight: root.active ? 600 : 400; horizontal-stretch: 1; }
+        if root.count > 0: Badge { text: root.count; tint: Theme.warn; y: 5px; }
+    }
+}
+
+export component Sidebar inherits Rectangle {
+    width: 250px;
+    background: Palette.alternate-background;
+    VerticalLayout {
+        padding: 10px;
+        spacing: 4px;
+        NavButton {
+            text: @tr("Revisões pendentes");
+            count: AppState.review-count;
+            active: AppState.view == "reviews";
+            clicked => { Actions.show-view("reviews"); }
+        }
+        NavButton {
+            text: @tr("Atividade da equipe");
+            active: AppState.view == "activity";
+            clicked => { Actions.show-view("activity"); }
+        }
+        if AppState.is-admin: NavButton {
+            text: @tr("Administração");
+            active: AppState.view == "admin";
+            clicked => { Actions.show-view("admin"); }
+        }
+        Rectangle { height: 8px; }
+        HorizontalLayout {
+            Subtitle { text: @tr("Projetos"); vertical-alignment: center; horizontal-stretch: 1; }
+            if AppState.can-write: Button {
+                text: "+";
+                clicked => { AppState.dialog = "new-project"; }
+            }
+        }
+        StandardListView {
+            vertical-stretch: 1;
+            model: AppState.project-list;
+            current-item <=> AppState.current-project-index;
+            item-pointer-event(index, event, pos) => {
+                if event.kind == PointerEventKind.up {
+                    Actions.select-project(index);
+                }
+            }
+        }
+        Muted { text: AppState.workspace-path; overflow: elide; wrap: no-wrap; }
+    }
+}
+
+// ------------------------------------------------------------------ project view
+
+component ItemPanel inherits Card {
+    property <bool> mine: AppState.item.locked-by-me;
+    property <bool> modified: AppState.item.local-status == "modified" || AppState.item.local-status == "conflict" || AppState.item.local-status == "untracked";
+    width: 340px;
+    HorizontalLayout {
+        spacing: 8px;
+        Subtitle { text: AppState.item.name; overflow: elide; horizontal-stretch: 1; }
+        if AppState.item.part-number != "": Text { text: AppState.item.part-number; font-family: "monospace"; vertical-alignment: center; }
+    }
+    HorizontalLayout {
+        spacing: 6px;
+        alignment: start;
+        Badge { text: AppState.item.version-label; tint: Theme.info; }
+        Badge { text: AppState.item.status-label; tint: StatusColor.of(AppState.versions[0].status); }
+        Badge { text: Labels.local(AppState.item.local-status); tint: StatusColor.local(AppState.item.local-status); }
+    }
+    if AppState.item.locked: Text {
+        text: (root.mine ? @tr("Em check-out com você desde {}", AppState.item.locked-at)
+                         : @tr("Em uso por {} desde {}", AppState.item.locked-by, AppState.item.locked-at))
+              + (AppState.item.lock-note != "" ? "\n“" + AppState.item.lock-note + "”" : "");
+        color: Theme.warn;
+        wrap: word-wrap;
+    }
+    if !AppState.item.locked: Muted {
+        text: AppState.item.require-lock ? @tr("Livre. Faça check-out antes de editar: o arquivo local fica somente leitura até lá.")
+                                         : @tr("Livre. Check-out opcional neste projeto.");
+    }
+    Muted { text: AppState.item.local-path; wrap: word-wrap; }
+    if AppState.item.base-label != "" && AppState.item.local-status != "uptodate": Muted {
+        text: @tr("Cópia local baseada na versão {}.", AppState.item.base-label);
+    }
+
+    // actions
+    if AppState.can-write && !AppState.item.locked: Button {
+        text: @tr("Fazer check-out");
+        primary: true;
+        enabled: !AppState.busy;
+        clicked => { AppState.dialog = "checkout"; }
+    }
+    if AppState.can-write && (root.mine || (!AppState.item.locked && !AppState.item.require-lock)): Button {
+        text: @tr("Publicar nova versão (check-in)…");
+        primary: root.mine;
+        enabled: !AppState.busy && root.modified;
+        clicked => { AppState.dialog = "checkin"; }
+    }
+    if root.mine: Button {
+        text: @tr("Desfazer check-out");
+        enabled: !AppState.busy;
+        clicked => { Actions.undo-checkout(); }
+    }
+    if AppState.is-admin && AppState.item.locked && !root.mine: Button {
+        text: @tr("Forçar liberação (admin)");
+        enabled: !AppState.busy;
+        clicked => { Actions.undo-checkout(); }
+    }
+    HorizontalLayout {
+        spacing: 6px;
+        Button {
+            text: @tr("Baixar última");
+            enabled: !AppState.busy && AppState.item.local-status != "uptodate";
+            clicked => { Actions.get-latest(); }
+        }
+        Button {
+            text: @tr("Abrir");
+            enabled: AppState.item.local-status != "missing";
+            clicked => { Actions.open-file(); }
+        }
+        Button {
+            text: @tr("Pasta");
+            clicked => { Actions.open-folder(); }
+        }
+    }
+    Rectangle { vertical-stretch: 1; }
+}
+
+component VersionsPanel inherits VerticalLayout {
+    spacing: 6px;
+    HorizontalLayout {
+        spacing: 8px;
+        Subtitle { text: @tr("Histórico de versões"); vertical-alignment: center; horizontal-stretch: 1; }
+        if AppState.current-version-row >= 0 && AppState.can-write: status := ComboBox {
+            width: 210px;
+            model: [Labels.status("draft", AppState.item.kind), Labels.status("in_review", AppState.item.kind),
+                    Labels.status("approved", AppState.item.kind), Labels.status("released", AppState.item.kind),
+                    Labels.status("obsolete", AppState.item.kind)];
+            current-index <=> AppState.version-status-index;
+            selected(v) => { Actions.set-version-status(AppState.status-keys[self.current-index]); }
+        }
+        if AppState.current-version-row >= 0: Button {
+            text: @tr("Salvar como…");
+            clicked => { Actions.save-version-as(); }
+        }
+    }
+    StandardTableView {
+        vertical-stretch: 1;
+        columns: [
+            { title: @tr("Versão"), min-width: 95px },
+            { title: @tr("Status"), min-width: 120px },
+            { title: @tr("Comentário"), horizontal-stretch: 1, min-width: 200px },
+            { title: @tr("Autor"), min-width: 110px },
+            { title: @tr("Data"), min-width: 120px },
+            { title: @tr("Tamanho"), min-width: 90px },
+            { title: @tr("Congelamentos"), min-width: 110px },
+        ];
+        rows: AppState.version-rows;
+        current-row <=> AppState.current-version-row;
+        current-row-changed(r) => { Actions.select-version(r); }
+    }
+}
+
+component ItemsTab inherits VerticalLayout {
+    spacing: 8px;
+    StandardTableView {
+        vertical-stretch: 1;
+        min-height: 160px;
+        columns: [
+            { title: @tr("Nº da peça"), min-width: 115px },
+            { title: @tr("Item"), horizontal-stretch: 1, min-width: 180px },
+            { title: @tr("Versão"), min-width: 95px },
+            { title: @tr("Status"), min-width: 130px },
+            { title: @tr("Check-out"), min-width: 120px },
+            { title: @tr("Cópia local"), min-width: 140px },
+        ];
+        rows: AppState.item-rows;
+        current-row <=> AppState.current-item-row;
+        current-row-changed(r) => { Actions.select-item(r); }
+    }
+    if AppState.has-item: HorizontalLayout {
+        spacing: 10px;
+        vertical-stretch: 1;
+        min-height: 300px;
+        ItemPanel { }
+        VersionsPanel { }
+    }
+    if !AppState.has-item: Muted {
+        text: AppState.item-rows.length == 0
+            ? @tr("Nenhum item neste projeto ainda.")
+            : @tr("Selecione um item para ver o histórico e as ações.");
+        horizontal-alignment: center;
+    }
+}
+
+component BaselinesTab inherits HorizontalLayout {
+    spacing: 10px;
+    VerticalLayout {
+        width: 280px;
+        spacing: 6px;
+        if AppState.is-admin: Button {
+            text: @tr("Novo congelamento…");
+            clicked => { AppState.dialog = "new-baseline"; }
+        }
+        StandardListView {
+            vertical-stretch: 1;
+            model: AppState.baseline-list;
+            current-item <=> AppState.current-baseline-index;
+            current-item-changed(i) => { Actions.select-baseline(i); }
+        }
+        Muted { text: @tr("Um congelamento registra qual versão de cada item compôs o carro num momento (competição, design review…)."); }
+    }
+    VerticalLayout {
+        spacing: 6px;
+        if AppState.current-baseline-index >= 0: HorizontalLayout {
+            spacing: 8px;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                Subtitle { text: AppState.baselines[AppState.current-baseline-index].name; }
+                Muted { text: AppState.baselines[AppState.current-baseline-index].info; }
+            }
+            Button {
+                text: @tr("Baixar para pasta…");
+                clicked => { Actions.download-baseline(); }
+            }
+        }
+        StandardTableView {
+            vertical-stretch: 1;
+            columns: [
+                { title: @tr("Nº da peça"), min-width: 115px },
+                { title: @tr("Item"), horizontal-stretch: 1, min-width: 180px },
+                { title: @tr("Versão"), min-width: 95px },
+                { title: @tr("Status atual"), min-width: 130px },
+                { title: @tr("Comentário"), horizontal-stretch: 1, min-width: 180px },
+            ];
+            rows: AppState.baseline-entry-rows;
+        }
+    }
+}
+
+export component ProjectView inherits VerticalLayout {
+    padding: 14px;
+    spacing: 10px;
+    HorizontalLayout {
+        spacing: 8px;
+        Badge { text: Labels.kind(AppState.project.kind); tint: AppState.project.kind == "cad" ? Theme.info : #8b5cf6; y: 4px; }
+        Title { text: AppState.project.name; horizontal-stretch: 1; }
+        if AppState.project.archived: Badge { text: @tr("Arquivado"); y: 4px; }
+        if AppState.can-write && !AppState.project.archived: Button {
+            text: @tr("Novo item…");
+            primary: true;
+            clicked => { AppState.picked-file = ""; AppState.dialog = "new-item"; }
+        }
+        Button {
+            text: @tr("Sincronizar");
+            enabled: !AppState.busy;
+            clicked => { Actions.sync-project(); }
+        }
+        if AppState.is-admin: Button {
+            text: @tr("Configurar");
+            clicked => { AppState.dialog = "edit-project"; }
+        }
+    }
+    if AppState.project.description != "" || AppState.project.require-lock: Muted {
+        text: AppState.project.description
+            + (AppState.project.description != "" ? "  ·  " : "")
+            + (AppState.project.require-lock ? @tr("Check-out obrigatório antes de publicar.") : @tr("Check-out opcional."));
+    }
+    TabWidget {
+        Tab {
+            title: @tr("Itens");
+            ItemsTab { padding-top: 8px; }
+        }
+        Tab {
+            title: @tr("Congelamentos");
+            BaselinesTab { padding-top: 8px; }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ reviews / activity / admin
+
+export component ReviewsView inherits VerticalLayout {
+    padding: 14px;
+    spacing: 10px;
+    HorizontalLayout {
+        spacing: 8px;
+        Title { text: @tr("Revisões pendentes"); horizontal-stretch: 1; }
+        if AppState.current-review-row >= 0: Button {
+            text: @tr("Abrir item");
+            clicked => { Actions.review-open-item(); }
+        }
+        if AppState.current-review-row >= 0 && AppState.is-admin: Button {
+            text: @tr("Aprovar");
+            clicked => { Actions.review-set-status("approved"); }
+        }
+        if AppState.current-review-row >= 0 && AppState.is-admin: Button {
+            text: @tr("Liberar");
+            primary: true;
+            clicked => { Actions.review-set-status("released"); }
+        }
+        if AppState.current-review-row >= 0 && AppState.can-write: Button {
+            text: @tr("Voltar para rascunho");
+            clicked => { Actions.review-set-status("draft"); }
+        }
+    }
+    Muted { text: @tr("Versões marcadas como “Em revisão”. Apenas administradores aprovam e liberam."); }
+    StandardTableView {
+        vertical-stretch: 1;
+        columns: [
+            { title: @tr("Projeto"), min-width: 140px },
+            { title: @tr("Item"), horizontal-stretch: 1, min-width: 160px },
+            { title: @tr("Versão"), min-width: 95px },
+            { title: @tr("Comentário"), horizontal-stretch: 1, min-width: 200px },
+            { title: @tr("Autor"), min-width: 110px },
+            { title: @tr("Data"), min-width: 120px },
+        ];
+        rows: AppState.review-rows;
+        current-row <=> AppState.current-review-row;
+        current-row-changed(r) => { AppState.current-review-row = r; }
+    }
+}
+
+component ActivityList inherits ListView {
+    in property <[ActivityRow]> rows;
+    for a in root.rows: VerticalLayout {
+        padding: 6px;
+        spacing: 1px;
+        Muted { text: a.date; }
+        Text { text: a.text; wrap: word-wrap; }
+    }
+}
+
+export component ActivityView inherits VerticalLayout {
+    padding: 14px;
+    spacing: 10px;
+    Title { text: @tr("Atividade da equipe"); }
+    ActivityList { rows: AppState.activity; vertical-stretch: 1; }
+}
+
+export component AdminView inherits VerticalLayout {
+    padding: 14px;
+    spacing: 10px;
+    HorizontalLayout {
+        spacing: 8px;
+        Title { text: @tr("Usuários"); horizontal-stretch: 1; }
+        Button {
+            text: @tr("Novo usuário…");
+            primary: true;
+            clicked => { AppState.dialog = "new-user"; }
+        }
+        if AppState.current-user-row >= 0: Button {
+            text: @tr("Editar selecionado…");
+            clicked => { AppState.dialog = "edit-user"; }
+        }
+    }
+    Muted { text: @tr("Administrador: aprova/libera versões, força liberação de check-out, congela versões e gerencia usuários. Membro: cria projetos e itens, faz check-out e publica. Leitor: só visualiza e baixa."); }
+    StandardTableView {
+        vertical-stretch: 1;
+        columns: [
+            { title: @tr("Nome"), horizontal-stretch: 1, min-width: 160px },
+            { title: @tr("Usuário"), min-width: 120px },
+            { title: @tr("Papel"), min-width: 120px },
+            { title: @tr("Subsistema"), min-width: 120px },
+            { title: @tr("Situação"), min-width: 90px },
+        ];
+        rows: AppState.user-rows;
+        current-row <=> AppState.current-user-row;
+        current-row-changed(r) => { AppState.current-user-row = r; }
+    }
+}
+

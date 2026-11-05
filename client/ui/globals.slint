@@ -1,0 +1,238 @@
+// Shared state (written by Rust), user actions (handled in Rust) and
+// translatable labels. Every user-visible string goes through @tr() so the
+// UI can be translated with gettext (.po files) without touching code.
+
+
+export struct ProjectRow {
+    id: int,
+    name: string,
+    kind: string,
+    subsystem: string,
+    description: string,
+    require-lock: bool,
+    archived: bool,
+}
+
+export struct ItemDetail {
+    id: int,
+    name: string,
+    part-number: string,
+    description: string,
+    kind: string,
+    file-name: string,
+    version-label: string,
+    status-label: string,
+    version-count: int,
+    locked: bool,
+    locked-by-me: bool,
+    locked-by: string,
+    locked-at: string,
+    lock-note: string,
+    require-lock: bool,
+    local-status: string,
+    local-path: string,
+    base-label: string,
+    bump-keys: [string],
+    bump-labels: [string],
+    default-bump: int,
+}
+
+export struct VersionRow {
+    id: int,
+    label: string,
+    status: string,
+    comment: string,
+}
+
+export struct ActivityRow {
+    date: string,
+    text: string,
+}
+
+export struct UserRow {
+    id: int,
+    username: string,
+    name: string,
+    role: string,
+    subsystem: string,
+    active: bool,
+}
+
+export struct BaselineRow {
+    id: int,
+    name: string,
+    description: string,
+    info: string,
+}
+
+export global Theme {
+    out property <color> brand: #d7261e;
+    out property <color> ok: #1f9d55;
+    out property <color> warn: #d99a00;
+    out property <color> danger: #c62828;
+    out property <color> info: #1d6fd8;
+    out property <length> radius: 6px;
+}
+
+export global Labels {
+    public pure function status(key: string, kind: string) -> string {
+        key == "draft" ? @tr("Rascunho")
+        : key == "in_review" ? @tr("Em revisão")
+        : key == "approved" ? @tr("Aprovado")
+        : key == "released" ? (kind == "cad" ? @tr("Liberado p/ fabricação") : @tr("Liberado p/ o carro"))
+        : key == "obsolete" ? @tr("Obsoleto")
+        : key
+    }
+
+    public pure function role(key: string) -> string {
+        key == "admin" ? @tr("Administrador")
+        : key == "member" ? @tr("Membro")
+        : key == "viewer" ? @tr("Leitor")
+        : key
+    }
+
+    public pure function kind(key: string) -> string {
+        key == "cad" ? @tr("CAD") : @tr("Software")
+    }
+
+    public pure function bump(key: string) -> string {
+        key == "patch" ? @tr("Correção (patch)")
+        : key == "minor" ? @tr("Nova funcionalidade (minor)")
+        : key == "major" ? @tr("Mudança incompatível (major)")
+        : key == "revision" ? @tr("Nova revisão (letra)")
+        : key == "iteration" ? @tr("Iteração de trabalho (.N)")
+        : key
+    }
+
+    public pure function local(key: string) -> string {
+        key == "missing" ? @tr("Não baixado")
+        : key == "uptodate" ? @tr("Atualizado")
+        : key == "outdated" ? @tr("Desatualizado")
+        : key == "modified" ? @tr("Alterado localmente")
+        : key == "conflict" ? @tr("Conflito: alterado e desatualizado")
+        : key == "untracked" ? @tr("Arquivo local desconhecido")
+        : key
+    }
+
+    public pure function action(key: string) -> string {
+        key == "project_created" ? @tr("criou o projeto")
+        : key == "project_archived" ? @tr("arquivou o projeto")
+        : key == "project_restored" ? @tr("reativou o projeto")
+        : key == "item_created" ? @tr("criou o item")
+        : key == "version_published" ? @tr("publicou")
+        : key == "checkout" ? @tr("fez check-out de")
+        : key == "checkin" ? @tr("liberou o check-out de")
+        : key == "checkout_forced" ? @tr("forçou a liberação do check-out de")
+        : key == "status_changed" ? @tr("alterou o status de")
+        : key == "baseline_created" ? @tr("criou o congelamento")
+        : key == "user_created" ? @tr("criou o usuário")
+        : key == "user_deactivated" ? @tr("desativou o usuário")
+        : key
+    }
+}
+
+export global AppState {
+    // navigation
+    in-out property <string> page: "login";      // login | main
+    in-out property <string> view: "project";    // project | reviews | activity | admin
+    in-out property <string> dialog: "";         // see dialogs.slint
+    // feedback
+    in-out property <bool> busy;
+    in-out property <string> status-text;
+    in-out property <string> error-text;
+    // server / session
+    in-out property <string> server-url;
+    in-out property <string> username;
+    in-out property <string> team-name: "Paddock";
+    in-out property <string> server-version;
+    in-out property <string> client-version;
+    in-out property <string> me-name;
+    in-out property <string> me-role;
+    in-out property <bool> is-admin;
+    in-out property <bool> can-write;
+    in-out property <[string]> subsystems;
+    in-out property <[string]> status-keys: ["draft", "in_review", "approved", "released", "obsolete"];
+    // projects
+    in-out property <[ProjectRow]> projects;
+    in-out property <[StandardListViewItem]> project-list;
+    in-out property <int> current-project-index: -1;
+    in-out property <ProjectRow> project;
+    in-out property <bool> has-project;
+    // items
+    in-out property <[[StandardListViewItem]]> item-rows;
+    in-out property <int> current-item-row: -1;
+    in-out property <bool> has-item;
+    in-out property <ItemDetail> item;
+    in-out property <int> my-lock-count;
+    // versions of the selected item
+    in-out property <[[StandardListViewItem]]> version-rows;
+    in-out property <[VersionRow]> versions;
+    in-out property <int> current-version-row: -1;
+    in-out property <int> version-status-index;  // index into status-keys of the selected version
+    in-out property <[ActivityRow]> item-activity;
+    // other views
+    in-out property <[[StandardListViewItem]]> review-rows;
+    in-out property <int> current-review-row: -1;
+    in-out property <int> review-count;
+    in-out property <[ActivityRow]> activity;
+    in-out property <[BaselineRow]> baselines;
+    in-out property <[StandardListViewItem]> baseline-list;
+    in-out property <int> current-baseline-index: -1;
+    in-out property <[[StandardListViewItem]]> baseline-entry-rows;
+    in-out property <[UserRow]> users;
+    in-out property <[[StandardListViewItem]]> user-rows;
+    in-out property <int> current-user-row: -1;
+    // settings
+    in-out property <string> workspace-path;
+    in-out property <bool> open-after-checkout: true;
+    in-out property <string> picked-file;
+    // generic confirmation dialog
+    in-out property <string> confirm-title;
+    in-out property <string> confirm-text;
+    in-out property <string> confirm-ok-text;
+    in-out property <bool> confirm-danger;
+}
+
+export global Actions {
+    callback login(url: string, username: string, password: string);
+    callback logout();
+    callback refresh();
+    callback show-view(view: string);
+    callback select-project(index: int);
+    callback select-item(row: int);
+    callback select-version(row: int);
+    // projects & items
+    callback create-project(name: string, kind: string, subsystem: string, description: string, require-lock: bool);
+    callback update-project(description: string, require-lock: bool, archived: bool);
+    callback pick-file();
+    callback create-item(name: string, part-number: string, description: string, comment: string, bump: string);
+    // working copy
+    callback checkout(note: string);
+    callback checkin(comment: string, bump: string, keep-lock: bool);
+    callback undo-checkout();
+    callback get-latest();
+    callback sync-project();
+    callback open-file();
+    callback open-folder();
+    callback save-version-as();
+    callback set-version-status(status: string);
+    // reviews
+    callback review-set-status(status: string);
+    callback review-open-item();
+    // baselines
+    callback create-baseline(name: string, description: string, only-released: bool);
+    callback select-baseline(index: int);
+    callback download-baseline();
+    // admin
+    callback create-user(username: string, name: string, password: string, role: string, subsystem: string);
+    callback update-user(role: string, subsystem: string, active: bool);
+    callback reset-password(password: string);
+    // settings
+    callback choose-workspace();
+    callback set-workspace(path: string);
+    callback set-open-after-checkout(value: bool);
+    callback change-password(current: string, new: string);
+    // confirmation dialog
+    callback confirm-accepted();
+    callback confirm-cancelled();
+}

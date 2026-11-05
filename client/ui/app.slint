@@ -1,0 +1,101 @@
+import { Button, Palette } from "std-widgets.slint";
+import { AppState, Actions, Labels, Theme } from "globals.slint";
+import { Muted } from "common.slint";
+import { LoginView, Sidebar, ProjectView, ReviewsView, ActivityView, AdminView } from "views.slint";
+import { NewProjectDialog, EditProjectDialog, NewItemDialog, CheckoutDialog, CheckinDialog, NewBaselineDialog,
+         NewUserDialog, EditUserDialog, SettingsDialog, AboutDialog, ConfirmDialog } from "dialogs.slint";
+
+export { AppState, Actions, Labels }
+
+component TopBar inherits Rectangle {
+    height: 46px;
+    background: #14161a;
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 10px;
+        spacing: 10px;
+        Rectangle { width: 22px; height: 22px; y: 12px; border-radius: 5px; background: Theme.brand;
+            Text { text: "P"; color: white; font-weight: 800; } }
+        Text { text: "Paddock"; color: white; font-weight: 700; font-size: 16px; vertical-alignment: center; }
+        Text { text: AppState.team-name; color: #ffffff99; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+        if AppState.busy: Text { text: @tr("Trabalhando…"); color: #ffffffbb; vertical-alignment: center; }
+        Text {
+            text: AppState.me-name + "  ·  " + Labels.role(AppState.me-role);
+            color: white;
+            vertical-alignment: center;
+        }
+        Button { text: @tr("Atualizar"); y: 7px; height: 32px; enabled: !AppState.busy; clicked => { Actions.refresh(); } }
+        Button { text: @tr("Configurações"); y: 7px; height: 32px; clicked => { AppState.dialog = "settings"; } }
+        Button { text: @tr("Sobre"); y: 7px; height: 32px; clicked => { AppState.dialog = "about"; } }
+        Button { text: @tr("Sair"); y: 7px; height: 32px; clicked => { Actions.logout(); } }
+    }
+}
+
+component StatusBar inherits Rectangle {
+    height: 30px;
+    background: AppState.error-text != "" ? Theme.danger.with-alpha(0.15) : Palette.alternate-background;
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 8px;
+        Text {
+            text: AppState.error-text != "" ? AppState.error-text : AppState.status-text;
+            color: AppState.error-text != "" ? Theme.danger : Palette.foreground.with-alpha(0.75);
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        if AppState.error-text != "": TouchArea {
+            width: 20px;
+            clicked => { AppState.error-text = ""; }
+            Text { text: "✕"; color: Theme.danger; }
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: AppState.team-name == "" ? "Paddock" : "Paddock · " + AppState.team-name;
+    icon: @image-url("../assets/icon-256.png");
+    preferred-width: 1360px;
+    preferred-height: 860px;
+    min-width: 960px;
+    min-height: 600px;
+    background: Palette.background;
+    default-font-size: 13px;
+
+    if AppState.page == "login": LoginView { }
+
+    if AppState.page == "main": VerticalLayout {
+        TopBar { }
+        HorizontalLayout {
+            vertical-stretch: 1;
+            Sidebar { }
+            Rectangle {
+                horizontal-stretch: 1;
+                if AppState.view == "project" && AppState.has-project: ProjectView { }
+                if AppState.view == "project" && !AppState.has-project: Muted {
+                    text: @tr("Nenhum projeto. Crie o primeiro com o botão + ao lado.");
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                if AppState.view == "reviews": ReviewsView { }
+                if AppState.view == "activity": ActivityView { }
+                if AppState.view == "admin": AdminView { }
+            }
+        }
+        StatusBar { }
+    }
+
+    // Dialogs (drawn on top).
+    if AppState.dialog == "new-project": NewProjectDialog { }
+    if AppState.dialog == "edit-project": EditProjectDialog { }
+    if AppState.dialog == "new-item": NewItemDialog { }
+    if AppState.dialog == "checkout": CheckoutDialog { }
+    if AppState.dialog == "checkin": CheckinDialog { }
+    if AppState.dialog == "new-baseline": NewBaselineDialog { }
+    if AppState.dialog == "new-user": NewUserDialog { }
+    if AppState.dialog == "edit-user": EditUserDialog { }
+    if AppState.dialog == "settings": SettingsDialog { }
+    if AppState.dialog == "about": AboutDialog { }
+    if AppState.dialog == "confirm": ConfirmDialog { }
+}

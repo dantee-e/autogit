@@ -1,0 +1,47 @@
+[package]
+name = "paddock-client"
+version = "0.2.0"
+edition = "2024"
+description = "Cliente desktop do Paddock: versões de CAD e software para equipes de Formula SAE"
+publish = false
+
+[dependencies]
+anyhow = "1.0.104"
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+directories = "6.0.0"
+hex = "0.4.3"
+open = "5.4.5"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "multipart", "rustls-tls"] }
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal", "wayland"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+slint = { version = "1.18", default-features = false, features = ["std", "backend-winit", "renderer-femtovg", "renderer-software", "compat-1-2", "accessibility"] }
+
+[build-dependencies]
+slint-build = "1.18"
+winresource = "0.1.34"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
+
+# ---------------------------------------------------------------- packaging
+
+# `cargo deb` (cargo install cargo-deb) -> target/debian/paddock_*.deb
+[package.metadata.deb]
+name = "paddock"
+maintainer = "Paddock"
+copyright = "Paddock"
+extended-description = "Cliente desktop do Paddock: gestão de versões de CAD e software para equipes de Formula SAE."
+section = "devel"
+priority = "optional"
+# $auto adds libraries the binary links to; the rest are loaded at runtime by winit/Slint.
+depends = "$auto, libxkbcommon-x11-0, libxkbcommon0, libfontconfig1, libgl1, libegl1, libx11-6, libxcursor1, libxrandr2, libxi6, libwayland-client0, libwayland-cursor0, libwayland-egl1"
+recommends = "xdg-desktop-portal"
+assets = [
+    ["target/release/paddock-client", "usr/bin/paddock", "755"],
+    ["packaging/linux/paddock.desktop", "usr/share/applications/", "644"],
+    ["assets/icon-256.png", "usr/share/icons/hicolor/256x256/apps/paddock.png", "644"],
+]

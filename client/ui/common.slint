@@ -1,0 +1,101 @@
+import { Palette, Button } from "std-widgets.slint";
+import { Theme, AppState } from "globals.slint";
+
+export component Badge inherits Rectangle {
+    in property <string> text;
+    in property <brush> tint: Palette.foreground;
+    height: 22px;
+    border-radius: 11px;
+    background: root.tint.with-alpha(0.14);
+    border-width: 1px;
+    border-color: root.tint.with-alpha(0.45);
+    HorizontalLayout {
+        padding-left: 9px;
+        padding-right: 9px;
+        Text {
+            text: root.text;
+            color: root.tint;
+            font-size: 12px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component Card inherits Rectangle {
+    background: Palette.alternate-background;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Palette.border.with-alpha(0.25);
+    VerticalLayout {
+        padding: 14px;
+        spacing: 8px;
+        @children
+    }
+}
+
+export component Title inherits Text {
+    font-size: 20px;
+    font-weight: 700;
+    overflow: elide;
+}
+
+export component Subtitle inherits Text {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+export component Muted inherits Text {
+    color: Palette.foreground.with-alpha(0.6);
+    font-size: 12px;
+    wrap: word-wrap;
+}
+
+export component FieldLabel inherits Text {
+    font-size: 12px;
+    font-weight: 600;
+    color: Palette.foreground.with-alpha(0.75);
+}
+
+// Full-window modal backdrop with a centered panel.
+export component DialogFrame inherits Rectangle {
+    in property <string> title;
+    in property <length> panel-width: 460px;
+    background: #00000088;
+    TouchArea { }  // swallow clicks behind the dialog
+    Rectangle {
+        width: min(root.panel-width, root.width - 32px);
+        height: min(layout.preferred-height, root.height - 32px);
+        background: Palette.background;
+        border-radius: 10px;
+        border-width: 1px;
+        border-color: Palette.border.with-alpha(0.4);
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #0006;
+        layout := VerticalLayout {
+            padding: 20px;
+            spacing: 10px;
+            Title { text: root.title; }
+            @children
+        }
+    }
+}
+
+// Status color per version status key.
+export global StatusColor {
+    public pure function of(key: string) -> brush {
+        key == "released" ? Theme.ok
+        : key == "approved" ? Theme.info
+        : key == "in_review" ? Theme.warn
+        : key == "obsolete" ? Palette.foreground.with-alpha(0.4)
+        : Palette.foreground.with-alpha(0.7)
+    }
+
+    public pure function local(key: string) -> brush {
+        key == "uptodate" ? Theme.ok
+        : key == "modified" ? Theme.info
+        : key == "outdated" ? Theme.warn
+        : key == "conflict" || key == "untracked" ? Theme.danger
+        : Palette.foreground.with-alpha(0.6)
+    }
+}

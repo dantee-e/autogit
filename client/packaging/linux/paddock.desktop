@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Paddock
+GenericName=Gestão de versões CAD
+Comment=Versões de CAD e software da equipe de Formula SAE
+Exec=paddock
+Icon=paddock
+Terminal=false
+Categories=Development;Engineering;
+Keywords=CAD;AutoCAD;versão;FSAE;

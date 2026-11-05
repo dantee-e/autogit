@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>                <string>Paddock</string>
+    <key>CFBundleDisplayName</key>         <string>Paddock</string>
+    <key>CFBundleIdentifier</key>          <string>br.paddock.client</string>
+    <key>CFBundleExecutable</key>          <string>paddock</string>
+    <key>CFBundleIconFile</key>            <string>Paddock</string>
+    <key>CFBundlePackageType</key>         <string>APPL</string>
+    <key>CFBundleShortVersionString</key>  <string>__VERSION__</string>
+    <key>CFBundleVersion</key>             <string>__VERSION__</string>
+    <key>CFBundleDevelopmentRegion</key>   <string>pt-BR</string>
+    <key>LSMinimumSystemVersion</key>      <string>11.0</string>
+    <key>NSHighResolutionCapable</key>     <true/>
+    <key>NSSupportsAutomaticGraphicsSwitching</key> <true/>
+    <!-- macOS 15+ asks before an app talks to servers on the local network
+         (e.g. the team server on the workshop Wi-Fi). -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>O Paddock se conecta ao servidor de versões da equipe na rede local.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>A pasta de trabalho padrão do Paddock fica em Documentos.</string>
+</dict>
+</plist>

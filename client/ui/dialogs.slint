@@ -1,0 +1,242 @@
+import { Button, LineEdit, ComboBox, CheckBox, TextEdit, AboutSlint, Palette } from "std-widgets.slint";
+import { AppState, Actions, Labels, Theme } from "globals.slint";
+import { DialogFrame, Muted, FieldLabel, Subtitle } from "common.slint";
+
+component DialogButtons inherits HorizontalLayout {
+    in property <string> ok-text: @tr("Salvar");
+    in property <bool> ok-enabled: true;
+    in property <bool> danger;
+    callback ok();
+    spacing: 8px;
+    alignment: end;
+    Button { text: @tr("Cancelar"); clicked => { AppState.dialog = ""; } }
+    Button { text: root.ok-text; primary: true; enabled: root.ok-enabled && !AppState.busy; clicked => { root.ok(); } }
+}
+
+export component NewProjectDialog inherits DialogFrame {
+    title: @tr("Novo projeto");
+    property <[string]> kinds: ["cad", "software"];
+    FieldLabel { text: @tr("Nome"); }
+    name := LineEdit { placeholder-text: @tr("Ex.: Chassi FS-26, Firmware ECU"); }
+    FieldLabel { text: @tr("Tipo"); }
+    kind := ComboBox {
+        model: [@tr("CAD: revisões A, B, C… e iterações A.1"), @tr("Software: versão semântica 1.4.2")];
+        current-index: 0;
+        selected => { lock.checked = self.current-index == 0; }
+    }
+    FieldLabel { text: @tr("Subsistema"); }
+    subsystem := ComboBox { model: AppState.subsystems; current-index: 0; }
+    FieldLabel { text: @tr("Descrição"); }
+    desc := LineEdit { }
+    lock := CheckBox { text: @tr("Exigir check-out antes de publicar (recomendado para CAD)"); checked: true; }
+    DialogButtons {
+        ok-text: @tr("Criar projeto");
+        ok-enabled: name.text != "";
+        ok => { Actions.create-project(name.text, kinds[kind.current-index], subsystem.current-value, desc.text, lock.checked); }
+    }
+}
+
+export component EditProjectDialog inherits DialogFrame {
+    title: @tr("Configurar projeto");
+    Subtitle { text: AppState.project.name; }
+    FieldLabel { text: @tr("Descrição"); }
+    desc := LineEdit { text: AppState.project.description; }
+    lock := CheckBox { text: @tr("Exigir check-out antes de publicar"); checked: AppState.project.require-lock; }
+    archived := CheckBox { text: @tr("Projeto arquivado (somente leitura)"); checked: AppState.project.archived; }
+    DialogButtons {
+        ok => { Actions.update-project(desc.text, lock.checked, archived.checked); }
+    }
+}
+
+export component NewItemDialog inherits DialogFrame {
+    title: @tr("Novo item");
+    property <bool> cad: AppState.project.kind == "cad";
+    FieldLabel { text: @tr("Arquivo da primeira versão"); }
+    HorizontalLayout {
+        spacing: 8px;
+        LineEdit {
+            text: AppState.picked-file;
+            placeholder-text: @tr("Escolha ou cole o caminho do arquivo");
+            edited(t) => { AppState.picked-file = t; }
+        }
+        Button { text: @tr("Escolher…"); clicked => { Actions.pick-file(); } }
+    }
+    Muted { text: @tr("O nome deste arquivo vira o nome fixo do item na pasta de trabalho (mantém as xrefs funcionando)."); }
+    FieldLabel { text: @tr("Nome do item"); }
+    name := LineEdit { placeholder-text: root.cad ? @tr("Ex.: Manga de eixo dianteira") : @tr("Ex.: Firmware ECU"); }
+    if root.cad: FieldLabel { text: @tr("Nº da peça (opcional)"); }
+    if root.cad: part := LineEdit { placeholder-text: "SUS-0142"; edited(t) => { root.part-number = t; } }
+    FieldLabel { text: @tr("Descrição"); }
+    desc := LineEdit { }
+    FieldLabel { text: @tr("Primeira versão"); }
+    first := ComboBox {
+        model: root.cad ? [@tr("Rev A"), @tr("Rev A.1 (ainda em trabalho)")]
+                        : [@tr("0.1.0 (em desenvolvimento)"), @tr("1.0.0 (estável)")];
+        current-index: 0;
+    }
+    FieldLabel { text: @tr("Comentário"); }
+    comment := LineEdit { placeholder-text: @tr("O que é esta versão?"); }
+    property <string> part-number;
+    DialogButtons {
+        ok-text: @tr("Criar item");
+        ok-enabled: name.text != "" && comment.text != "" && AppState.picked-file != "";
+        ok => {
+            Actions.create-item(name.text, root.part-number, desc.text, comment.text,
+                root.cad ? (first.current-index == 0 ? "revision" : "iteration")
+                         : (first.current-index == 0 ? "minor" : "major"));
+        }
+    }
+}
+
+export component CheckoutDialog inherits DialogFrame {
+    title: @tr("Fazer check-out");
+    Muted { text: @tr("O arquivo será baixado (se necessário) e liberado para edição. Ninguém mais poderá publicar este item até você fazer check-in ou desfazer o check-out."); }
+    FieldLabel { text: @tr("O que vai fazer? (opcional, visível para a equipe)"); }
+    note := LineEdit { placeholder-text: @tr("Ex.: alterar furação da pinça"); }
+    open := CheckBox {
+        text: @tr("Abrir o arquivo após o check-out");
+        checked: AppState.open-after-checkout;
+        toggled => { Actions.set-open-after-checkout(self.checked); }
+    }
+    DialogButtons {
+        ok-text: @tr("Fazer check-out");
+        ok => { Actions.checkout(note.text); }
+    }
+}
+
+export component CheckinDialog inherits DialogFrame {
+    title: @tr("Publicar nova versão");
+    Muted { text: @tr("Envia {} como nova versão de “{}”.", AppState.item.file-name, AppState.item.name); }
+    FieldLabel { text: @tr("Tipo de mudança"); }
+    bump := ComboBox { model: AppState.item.bump-labels; current-index: AppState.item.default-bump; }
+    FieldLabel { text: @tr("O que mudou?"); }
+    comment := TextEdit {
+        height: 80px;
+        placeholder-text: AppState.item.kind == "cad" ? @tr("Ex.: aumentei a espessura da parede para 2 mm")
+                                                      : @tr("Ex.: ajuste no mapa de injeção acima de 9000 rpm");
+    }
+    keep := CheckBox {
+        visible: AppState.item.locked-by-me;
+        text: @tr("Manter o check-out depois de publicar");
+    }
+    DialogButtons {
+        ok-text: @tr("Publicar");
+        ok-enabled: comment.text != "";
+        ok => { Actions.checkin(comment.text, AppState.item.bump-keys[bump.current-index], keep.checked && AppState.item.locked-by-me); }
+    }
+}
+
+export component NewBaselineDialog inherits DialogFrame {
+    title: @tr("Novo congelamento");
+    Muted { text: @tr("Registra de forma permanente qual versão de cada item de “{}” compõe esta configuração.", AppState.project.name); }
+    FieldLabel { text: @tr("Nome"); }
+    name := LineEdit { placeholder-text: @tr("Ex.: FSAE Brasil 2026 — carro de prova"); }
+    FieldLabel { text: @tr("Descrição"); }
+    desc := LineEdit { }
+    released := CheckBox { text: @tr("Usar só a última versão liberada de cada item"); }
+    DialogButtons {
+        ok-text: @tr("Congelar");
+        ok-enabled: name.text != "";
+        ok => { Actions.create-baseline(name.text, desc.text, released.checked); }
+    }
+}
+
+component RolePicker inherits ComboBox {
+    in property <string> initial: "member";
+    out property <string> role-key: ["admin", "member", "viewer"][self.current-index];
+    model: [Labels.role("admin"), Labels.role("member"), Labels.role("viewer")];
+    current-index: initial == "admin" ? 0 : initial == "viewer" ? 2 : 1;
+}
+
+export component NewUserDialog inherits DialogFrame {
+    title: @tr("Novo usuário");
+    FieldLabel { text: @tr("Nome completo"); }
+    name := LineEdit { }
+    FieldLabel { text: @tr("Usuário (login)"); }
+    username := LineEdit { }
+    FieldLabel { text: @tr("Senha inicial (mín. 8 caracteres)"); }
+    pwd := LineEdit { input-type: InputType.password; }
+    FieldLabel { text: @tr("Papel"); }
+    role := RolePicker { }
+    FieldLabel { text: @tr("Subsistema"); }
+    subsystem := ComboBox { model: AppState.subsystems; current-index: 0; }
+    DialogButtons {
+        ok-text: @tr("Criar");
+        ok-enabled: name.text != "" && username.text != "" && pwd.text != "";
+        ok => { Actions.create-user(username.text, name.text, pwd.text, role.role-key, subsystem.current-value); }
+    }
+}
+
+export component EditUserDialog inherits DialogFrame {
+    title: @tr("Editar usuário");
+    property <int> idx: AppState.current-user-row;
+    Subtitle { text: AppState.users[idx].name + "  (@" + AppState.users[idx].username + ")"; }
+    FieldLabel { text: @tr("Papel"); }
+    role := RolePicker { initial: AppState.users[idx].role; }
+    FieldLabel { text: @tr("Subsistema"); }
+    subsystem := LineEdit { text: AppState.users[idx].subsystem; }
+    active := CheckBox { text: @tr("Ativo (desativar revoga sessões e libera check-outs)"); checked: AppState.users[idx].active; }
+    DialogButtons {
+        ok => { Actions.update-user(role.role-key, subsystem.text, active.checked); }
+    }
+    FieldLabel { text: @tr("Redefinir senha"); }
+    HorizontalLayout {
+        spacing: 8px;
+        pw := LineEdit { input-type: InputType.password; placeholder-text: @tr("Nova senha"); }
+        Button { text: @tr("Redefinir"); enabled: pw.text != ""; clicked => { Actions.reset-password(pw.text); } }
+    }
+}
+
+export component SettingsDialog inherits DialogFrame {
+    title: @tr("Configurações");
+    FieldLabel { text: @tr("Pasta de trabalho"); }
+    HorizontalLayout {
+        spacing: 8px;
+        ws := LineEdit { text: AppState.workspace-path; accepted(t) => { Actions.set-workspace(t); } }
+        Button { text: @tr("Escolher…"); clicked => { Actions.choose-workspace(); } }
+        Button { text: @tr("Aplicar"); enabled: ws.text != AppState.workspace-path; clicked => { Actions.set-workspace(ws.text); } }
+    }
+    CheckBox {
+        text: @tr("Abrir arquivo após check-out");
+        checked: AppState.open-after-checkout;
+        toggled => { Actions.set-open-after-checkout(self.checked); }
+    }
+    Rectangle { height: 6px; }
+    Subtitle { text: @tr("Alterar minha senha"); }
+    current := LineEdit { input-type: InputType.password; placeholder-text: @tr("Senha atual"); }
+    new := LineEdit { input-type: InputType.password; placeholder-text: @tr("Nova senha"); }
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: end;
+        Button {
+            text: @tr("Alterar senha");
+            enabled: current.text != "" && new.text != "";
+            clicked => { Actions.change-password(current.text, new.text); }
+        }
+        Button { text: @tr("Fechar"); primary: true; clicked => { AppState.dialog = ""; } }
+    }
+}
+
+export component AboutDialog inherits DialogFrame {
+    title: @tr("Sobre o Paddock");
+    Text { text: @tr("Paddock {}", AppState.client-version); font-weight: 600; }
+    Muted { text: @tr("Gestão de versões de CAD e software para equipes de Formula SAE."); }
+    Muted { text: @tr("Servidor {} · versão {}", AppState.server-url, AppState.server-version); }
+    // Required by the Slint Royalty-free license (section 2a). Do not remove.
+    AboutSlint { }
+    HorizontalLayout {
+        alignment: end;
+        Button { text: @tr("Fechar"); primary: true; clicked => { AppState.dialog = ""; } }
+    }
+}
+
+export component ConfirmDialog inherits DialogFrame {
+    title: AppState.confirm-title;
+    Text { text: AppState.confirm-text; wrap: word-wrap; }
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: end;
+        Button { text: @tr("Cancelar"); clicked => { Actions.confirm-cancelled(); } }
+        Button { text: AppState.confirm-ok-text; primary: true; clicked => { Actions.confirm-accepted(); } }
+    }
+}
