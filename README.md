@@ -7,8 +7,14 @@ editarem o mesmo arquivo, existe o **check-out** (bloqueio).
 ```
 paddock/
 ├── server/   API em Python (FastAPI + SQLAlchemy + SQLite)
-└── client/   App desktop nativo em Rust + Slint (Windows, Linux, macOS)
+├── client/   App desktop nativo em Rust + Slint (Windows, Linux, macOS)
+└── docs/     Documentação técnica
 ```
+
+**Documentação técnica:** [arquitetura](docs/arquitetura.md) · [servidor](docs/servidor.md) ·
+[API](docs/api.md) · [cliente](docs/cliente.md) · [pasta de trabalho](docs/pasta-de-trabalho.md) ·
+[empacotamento](docs/empacotamento.md) · [customização](docs/customizacao.md) ·
+[solução de problemas](docs/solucao-de-problemas.md)
 
 ## Conceitos
 
